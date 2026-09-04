@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.env*
+!.env.example
+data/
+public/uploads/
+*.tsbuildinfo
+.vercel/
+
+.vercel
+.env*
+
+output/
+tmp/

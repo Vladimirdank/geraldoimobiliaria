@@ -1,0 +1,231 @@
+import { PGlite } from "@electric-sql/pglite";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import assert from "node:assert/strict";
+
+// Isolated PostgreSQL engine. Auth/Storage schemas below emulate Supabase's SQL
+// contract only; they do not replace testing the real Auth/Storage services.
+const db = new PGlite();
+const results = [];
+const pass = (name) => {
+  results.push(name);
+  console.log("PASS", name);
+};
+const admin = "10000000-0000-4000-8000-000000000001";
+const viewer = "10000000-0000-4000-8000-000000000002";
+const propertyId = "20000000-0000-4000-8000-000000000001";
+const leadId = "30000000-0000-4000-8000-000000000001";
+async function as(role, id = "") {
+  await db.exec("reset role");
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [id]);
+  await db.exec(`set role ${role}`);
+}
+try {
+  await db.exec(`
+    create role anon nologin; create role authenticated nologin;
+    create schema auth; create schema storage;
+    create table auth.users(id uuid primary key);
+    create function auth.uid() returns uuid language sql stable as $$
+      select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid;
+    $$;
+    grant usage on schema auth to anon,authenticated;
+    grant execute on function auth.uid() to anon,authenticated;
+    create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+    create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text);
+    alter table storage.objects enable row level security;
+    grant usage on schema storage to anon,authenticated;
+    grant select,insert,update,delete on storage.objects to anon,authenticated;
+  `);
+  await db.exec(readFileSync("database/schema.sql", "utf8"));
+  pass("Estrutura SQL executada integralmente no PostgreSQL local");
+  const tables = await db.query(
+    "select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='geraldo' and relkind='r' and not relrowsecurity",
+  );
+  assert.equal(tables.rows.length, 0);
+  pass("RLS ativo em todas as tabelas da aplicação");
+  await db.query("insert into auth.users values($1),($2)", [admin, viewer]);
+  await db.query(
+    "insert into geraldo.profiles(id,role) values($1,'admin'),($2,'viewer')",
+    [admin, viewer],
+  );
+  const p = {
+    id: propertyId,
+    slug: "imovel-teste",
+    code: "TEST-001",
+    title: "Imóvel de teste",
+    description: "Teste",
+    short_description: "Teste",
+    purpose: "Comprar",
+    type: "Casa",
+    city: "Natal",
+    neighborhood: "Tirol",
+    condominium: "",
+    state: "RN",
+    address: "Rua privada 123",
+    map_mode: "approximate",
+    price: 800000,
+    condo_fee: 500,
+    iptu: 1000,
+    show_price: true,
+    area: 200,
+    land_area: 300,
+    bedrooms: 3,
+    suites: 2,
+    bathrooms: 3,
+    parking: 2,
+    floor: 0,
+    year: 2026,
+    status: "Disponível",
+    active: false,
+    featured: true,
+    tag: "DESTAQUE",
+    sort_order: 0,
+    financing: true,
+    fgts: false,
+    exchange: false,
+    video: "",
+    tour: "",
+    seo_title: "",
+    seo_description: "",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    images: [
+      "https://images.unsplash.com/test.jpg",
+      "https://images.unsplash.com/test2.jpg",
+    ],
+    captions: ["Capa", "Sala"],
+    features: ["Piscina", "Varanda"],
+  };
+  const save = () =>
+    db.query("select geraldo.save_property($1::jsonb)", [JSON.stringify(p)]);
+  await as("authenticated", viewer);
+  await assert.rejects(save);
+  pass("Usuário sem papel admin não consegue cadastrar imóveis");
+  await assert.rejects(() =>
+    db.query("update geraldo.profiles set role='admin' where id=$1", [viewer]),
+  );
+  pass("Usuário não consegue promover a própria permissão");
+  await as("authenticated", admin);
+  await save();
+  assert.equal(
+    (await db.query("select * from geraldo.property_images")).rows.length,
+    2,
+  );
+  assert.equal(
+    (await db.query("select * from geraldo.property_features")).rows.length,
+    2,
+  );
+  pass(
+    "Administrador cadastra imóvel, imagens e diferenciais em transação única",
+  );
+  await as("anon");
+  assert.equal(
+    (await db.query("select * from geraldo.properties")).rows.length,
+    0,
+  );
+  assert.equal(
+    (await db.query("select * from geraldo.property_images")).rows.length,
+    0,
+  );
+  pass("Visitante não lê rascunhos nem suas imagens");
+  await as("authenticated", admin);
+  p.active = true;
+  await save();
+  await as("anon");
+  assert.equal(
+    (await db.query("select * from geraldo.properties")).rows.length,
+    1,
+  );
+  assert.equal(
+    (await db.query("select * from geraldo.property_addresses")).rows.length,
+    0,
+  );
+  pass("Imóvel publicado visível; endereço aproximado permanece privado");
+  await assert.rejects(() => db.query("delete from geraldo.properties"));
+  pass("Visitante não exclui imóveis");
+  await db.query(
+    "insert into geraldo.leads(id,name,phone,origin,property_id,utms) values($1,'Contato teste','84900000000','imovel',$2,$3)",
+    [leadId, propertyId, JSON.stringify({ utm_campaign: "teste" })],
+  );
+  await assert.rejects(() => db.query("select * from geraldo.leads"));
+  pass("Visitante envia lead mas não lê os contatos armazenados");
+  await as("authenticated", viewer);
+  assert.equal((await db.query("select * from geraldo.leads")).rows.length, 0);
+  assert.equal(
+    (
+      await db.query(
+        "update geraldo.leads set status='Convertido' returning id",
+      )
+    ).rows.length,
+    0,
+  );
+  pass("Usuário comum não lê nem altera leads");
+  await as("authenticated", admin);
+  assert.equal(
+    (await db.query("select utms from geraldo.leads")).rows[0].utms
+      .utm_campaign,
+    "teste",
+  );
+  await db.query(
+    "update geraldo.leads set status='Visita agendada' where id=$1",
+    [leadId],
+  );
+  pass("Administrador lê UTMs e atualiza atendimento");
+  p.map_mode = "exact";
+  await save();
+  await as("anon");
+  assert.equal(
+    (await db.query("select address from geraldo.property_addresses")).rows[0]
+      .address,
+    p.address,
+  );
+  pass("Endereço completo só é público quando explicitamente configurado");
+  await assert.rejects(() =>
+    db.query(
+      "insert into storage.objects(bucket_id,name) values('property-images','teste.webp')",
+    ),
+  );
+  await as("authenticated", admin);
+  await db.query(
+    "insert into storage.objects(bucket_id,name) values('property-images','teste.webp')",
+  );
+  pass("Escrita no bucket restrita a administradores");
+  p.status = "Vendido";
+  await save();
+  await as("anon");
+  assert.equal(
+    (await db.query("select * from geraldo.properties")).rows.length,
+    0,
+  );
+  assert.equal(
+    (await db.query("select * from geraldo.property_addresses")).rows.length,
+    0,
+  );
+  pass("Imóvel vendido e endereço deixam de aparecer publicamente");
+  await as("authenticated", admin);
+  await db.query("delete from geraldo.properties where id=$1", [propertyId]);
+  assert.equal(
+    (await db.query("select * from geraldo.property_images")).rows.length,
+    0,
+  );
+  assert.equal(
+    (await db.query("select * from geraldo.property_features")).rows.length,
+    0,
+  );
+  assert.equal(
+    (await db.query("select property_id from geraldo.leads")).rows[0]
+      .property_id,
+    null,
+  );
+  pass("Exclusão remove relações sem apagar o histórico do lead");
+  mkdirSync("database", { recursive: true });
+  writeFileSync(
+    "database/TEST-RESULTS.md",
+    `# Validação SQL local\n\nExecutado em ${new Date().toISOString()}.\n\n${results.map((x) => "- Aprovado: " + x).join("\n")}\n\n${results.length} verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Nenhum banco remoto foi alterado; integração HTTP/PostgREST, autenticação real e upload remoto ainda precisam ser verificados no projeto Supabase correto.\n`,
+  );
+  console.log(`${results.length} verificações aprovadas.`);
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+} finally {
+  await db.close();
+}

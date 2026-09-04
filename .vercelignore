@@ -1,0 +1,15 @@
+data/**
+.env*
+.git/**
+.next/**
+node_modules/**
+scripts/**
+database/**
+AGENTS.md
+CLAUDE.md
+ARCHITECTURE.md
+VALIDATION.md
+README.md
+*.tsbuildinfo
+output/**
+tmp/**
