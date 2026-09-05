@@ -8,17 +8,22 @@ export async function POST(req: Request) {
   try {
     await sameOrigin();
     await requireAdmin();
+    if (Number(req.headers.get("content-length") || 0) > 4 * 1024 * 1024)
+      return NextResponse.json(
+        { error: "A foto preparada deve ter até 3 MB." },
+        { status: 413 },
+      );
     const data = await req.formData();
     const file = data.get("file");
     if (
       !(file instanceof File) ||
-      file.size > 12 * 1024 * 1024 ||
+      file.size > 3 * 1024 * 1024 ||
       !["image/jpeg", "image/png", "image/webp", "image/avif"].includes(
         file.type,
       )
     )
       return NextResponse.json(
-        { error: "Envie JPG, PNG, WebP ou AVIF de até 12 MB." },
+        { error: "Envie JPG, PNG, WebP ou AVIF de até 3 MB após otimização." },
         { status: 400 },
       );
     const buffer = await sharp(Buffer.from(await file.arrayBuffer()), {

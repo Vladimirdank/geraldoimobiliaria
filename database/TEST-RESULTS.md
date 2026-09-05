@@ -1,8 +1,8 @@
 # Validação SQL local
 
-Executado em 2026-09-04T14:45:42.003Z.
+Executado em 2026-09-05T01:51:39.733Z.
 
-- Aprovado: Estrutura SQL executada integralmente no PostgreSQL local
+- Aprovado: Estrutura SQL e migração do painel executadas integralmente no PostgreSQL local
 - Aprovado: RLS ativo em todas as tabelas da aplicação
 - Aprovado: Usuário sem papel admin não consegue cadastrar imóveis
 - Aprovado: Usuário não consegue promover a própria permissão
@@ -17,5 +17,11 @@ Executado em 2026-09-04T14:45:42.003Z.
 - Aprovado: Escrita no bucket restrita a administradores
 - Aprovado: Imóvel vendido e endereço deixam de aparecer publicamente
 - Aprovado: Exclusão remove relações sem apagar o histórico do lead
+- Aprovado: Atendimento salva responsável, agenda, primeiro contato e histórico na mesma transação
+- Aprovado: Edição concorrente com versão antiga é recusada
+- Aprovado: Usuário sem permissão não consulta métricas, histórico ou altera o atendimento
+- Aprovado: Métricas agregadas refletem os registros reais
+- Aprovado: Renomear cadastro auxiliar preserva o ID canônico
+- Aprovado: Limite persistente também protege inserção direta na Data API
 
-15 verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Nenhum banco remoto foi alterado; integração HTTP/PostgREST, autenticação real e upload remoto ainda precisam ser verificados no projeto Supabase correto.
+21 verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Nenhum banco remoto foi alterado; integração HTTP/PostgREST, autenticação real e upload remoto ainda precisam ser verificados no projeto Supabase correto.

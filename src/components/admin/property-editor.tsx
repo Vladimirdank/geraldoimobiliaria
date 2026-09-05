@@ -1,5 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { prepareImage } from "@/lib/prepare-image";
+import { publicationIssues } from "@/lib/admin-model";
 import { ArrowLeft, ArrowRight, Upload, X, Star, Save } from "lucide-react";
 import type { Property, Content } from "@/types";
 import { slugify } from "@/lib/format";
@@ -62,17 +64,36 @@ export function PropertyEditor({
   const [p, setP] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState("");
+  const dirty = JSON.stringify(p) !== JSON.stringify(initial);
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const [drag, setDrag] = useState<number | null>(null);
   const field = (key: keyof Property, value: any) =>
     setP((prev) => ({ ...prev, [key]: value }));
   const upload = async (files: FileList | null) => {
     if (!files) return;
+    if (p.images.length + files.length > 40) {
+      setError("Cada imóvel pode ter até 40 fotos.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
+      let index = 0;
       for (const file of Array.from(files)) {
+        setUploadProgress(
+          `Preparando e enviando foto ${++index} de ${files.length}…`,
+        );
         const f = new FormData();
-        f.set("file", file);
+        f.set("file", await prepareImage(file));
         const r = await fetch("/api/upload", { method: "POST", body: f });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
@@ -86,6 +107,7 @@ export function PropertyEditor({
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      setUploadProgress("");
     }
   };
   const move = (from: number, to: number) => {
@@ -102,6 +124,13 @@ export function PropertyEditor({
       <input
         type={type}
         min={type === "number" ? 0 : undefined}
+        step={
+          type === "number"
+            ? ["price", "condo_fee", "iptu", "area", "land_area"].includes(key)
+              ? "0.01"
+              : "1"
+            : undefined
+        }
         required={["title", "code", "city", "type"].includes(key)}
         value={String(p[key])}
         onChange={(e) => {
@@ -143,6 +172,8 @@ export function PropertyEditor({
         setBusy(true);
         setError("");
         try {
+          const issues = p.active ? publicationIssues(p) : [];
+          if (issues.length) throw new Error(issues.join(" "));
           await onSave(p);
         } catch (e) {
           setError((e as Error).message);
@@ -152,7 +183,18 @@ export function PropertyEditor({
       }}
     >
       <div className="editor-toolbar">
-        <button type="button" className="text-button" onClick={onClose}>
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={() => {
+            if (
+              !dirty ||
+              confirm("Descartar as alterações não salvas deste imóvel?")
+            )
+              onClose();
+          }}
+        >
           <ArrowLeft size={16} />
           Voltar
         </button>
@@ -162,12 +204,49 @@ export function PropertyEditor({
           {busy ? "Salvando…" : "Salvar imóvel"}
         </button>
       </div>
+      <nav className="editor-steps" aria-label="Seções do cadastro">
+        {[
+          "Informações",
+          "Localização",
+          "Características",
+          "Fotografias",
+          "Publicação",
+        ].map((label, i) => (
+          <a key={label} href={"#editor-section-" + i}>
+            {String(i + 1).padStart(2, "0")} · {label}
+          </a>
+        ))}
+      </nav>
+      <div
+        className={
+          "publication-checklist " +
+          (!publicationIssues(p).length ? "ready" : "")
+        }
+      >
+        <p>
+          {publicationIssues(p).length
+            ? "Para publicar este imóvel:"
+            : "As informações essenciais estão prontas para publicação."}
+        </p>
+        {publicationIssues(p).length > 0 && (
+          <ul>
+            {publicationIssues(p).map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {uploadProgress && (
+        <p className="upload-progress" role="status">
+          {uploadProgress}
+        </p>
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
-      <section className="admin-card">
+      <section id="editor-section-0" className="admin-card">
         <h3>01 · Informações do imóvel</h3>
         <div className="admin-form-grid">
           {input("title", "Título")}
@@ -204,7 +283,7 @@ export function PropertyEditor({
           />
         </label>
       </section>
-      <section className="admin-card">
+      <section id="editor-section-1" className="admin-card">
         <h3>02 · Valores e localização</h3>
         <div className="admin-form-grid">
           {input("price", "Valor (R$)", "number")}
@@ -250,7 +329,7 @@ export function PropertyEditor({
           Exibir preço (desmarcado: Sob consulta)
         </label>
       </section>
-      <section className="admin-card">
+      <section id="editor-section-2" className="admin-card">
         <h3>03 · Características</h3>
         <div className="admin-form-grid">
           {(
@@ -306,7 +385,7 @@ export function PropertyEditor({
           ))}
         </div>
       </section>
-      <section className="admin-card">
+      <section id="editor-section-3" className="admin-card">
         <h3>04 · Fotografias</h3>
         <p>
           A primeira foto será a capa. Arraste para reorganizar ou use as setas.
@@ -399,7 +478,7 @@ export function PropertyEditor({
           {input("tour", "Tour virtual (https://)", "url")}
         </div>
       </section>
-      <section className="admin-card">
+      <section id="editor-section-4" className="admin-card">
         <h3>05 · Publicação e SEO</h3>
         <div className="admin-form-grid">
           {select("tag", "Etiqueta", [

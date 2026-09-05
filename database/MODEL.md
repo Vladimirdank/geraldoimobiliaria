@@ -1,6 +1,6 @@
 # Modelo do banco — Geraldo Imobiliária
 
-Definição executável: `schema.sql`. Estrutura validada em PostgreSQL embarcado; ainda não aplicada no Supabase remoto.
+Definição inicial: `schema.sql`. Evolução versionada em `supabase/migrations`, aplicada ao projeto Supabase habiqagnbbwpefwjmyyp e validada em PostgreSQL embarcado e integração real.
 
 ## Tabelas
 
@@ -56,3 +56,7 @@ npm run test:database
 ```
 
 O teste usa um banco isolado em memória, sem credenciais nem dados reais. O relatório é salvo em `TEST-RESULTS.md`. O teste não valida o serviço remoto de login, a API PostgREST nem o upload real de arquivos.
+
+## Evolução administrativa
+
+A tabela lead_activities registra alterações e notas dos atendimentos. Leads incluem responsável textual, prioridade, próxima ação, primeiro contato, motivo de perda, consentimento e controle de concorrência por updated_at. O schema privado mantém contadores persistentes de submissões. As funções save_lead_workflow e admin_overview exigem administrador.

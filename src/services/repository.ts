@@ -15,24 +15,7 @@ export async function properties(admin = false): Promise<Property[]> {
       q = q.eq("active", true).in("status", ["Disponível", "Reservado"]);
     const { data, error } = await q;
     if (error) throw error;
-    return (data || []).map((p: any) => ({
-      ...p,
-      address:
-        admin || p.map_mode === "exact"
-          ? (Array.isArray(p.property_addresses)
-              ? p.property_addresses[0]?.address
-              : p.property_addresses?.address) || ""
-          : "",
-      type: p.property_types?.name || "",
-      city: p.cities?.name || "",
-      neighborhood: p.neighborhoods?.name || "",
-      condominium: p.condominiums?.name || "",
-      images: p.property_images
-        .sort((a: any, b: any) => a.sort_order - b.sort_order)
-        .map((i: any) => i.url),
-      captions: p.property_images.map((i: any) => i.caption),
-      features: p.property_features.map((f: any) => f.features.name),
-    }));
+    return (data || []).map((p: any) => mapProperty(p, admin));
   }
   const rows = db()
     .prepare(
@@ -104,7 +87,7 @@ export async function saveLead(l: Lead) {
   } else
     db()
       .prepare(
-        "INSERT INTO leads(id,name,phone,email,property_id,origin,message,status,utms,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO leads(id,name,phone,email,property_id,origin,message,status,utms,created_at,updated_at,consent_at,consent_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         l.id,
@@ -117,6 +100,9 @@ export async function saveLead(l: Lead) {
         l.status,
         JSON.stringify(l.utms),
         l.created_at,
+        l.created_at,
+        l.consent_at || null,
+        l.consent_version || "",
       );
 }
 export async function saveProperty(p: Property) {
@@ -162,12 +148,64 @@ export async function saveContent(c: Content) {
   if (cloud()) {
     const { error } = await (await supabase()).from("content").upsert(c);
     if (error) throw error;
-  } else
-    db()
-      .prepare(
-        "INSERT INTO content(id,kind,title,body,extra,sort_order) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,extra=excluded.extra,sort_order=excluded.sort_order",
-      )
-      .run(c.id, c.kind, c.title, c.body, c.extra, c.sort_order);
+  } else {
+    const conn = db();
+    conn.exec("BEGIN IMMEDIATE");
+    try {
+      const old = conn.prepare("SELECT * FROM content WHERE id=?").get(c.id) as
+        Content | undefined;
+      if (old && old.kind !== c.kind)
+        throw new Error("Não altere o tipo de um cadastro existente.");
+      const key = (
+        {
+          type: "type",
+          city: "city",
+          neighborhood: "neighborhood",
+          condominium: "condominium",
+          feature: "features",
+        } as Record<string, string>
+      )[c.kind];
+      if (key) {
+        if (
+          conn
+            .prepare(
+              "SELECT id FROM content WHERE kind=? AND title=? AND id<>?",
+            )
+            .get(c.kind, c.title, c.id)
+        )
+          throw new Error("UNIQUE");
+        if (old && old.title !== c.title)
+          for (const row of conn
+            .prepare("SELECT id,payload FROM properties")
+            .all() as { id: string; payload: string }[]) {
+            const property = JSON.parse(row.payload);
+            const linked =
+              key === "features"
+                ? property.features.includes(old.title)
+                : property[key] === old.title;
+            if (!linked) continue;
+            if (key === "features")
+              property.features = property.features.map((name: string) =>
+                name === old.title ? c.title : name,
+              );
+            else property[key] = c.title;
+            property.updated_at = new Date().toISOString();
+            conn
+              .prepare("UPDATE properties SET payload=? WHERE id=?")
+              .run(JSON.stringify(property), row.id);
+          }
+      }
+      conn
+        .prepare(
+          "INSERT INTO content(id,kind,title,body,extra,sort_order) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,extra=excluded.extra,sort_order=excluded.sort_order",
+        )
+        .run(c.id, c.kind, c.title, c.body, c.extra, c.sort_order);
+      conn.exec("COMMIT");
+    } catch (error) {
+      conn.exec("ROLLBACK");
+      throw error;
+    }
+  }
 }
 export async function deleteContent(id: string) {
   if (cloud()) {
@@ -178,16 +216,64 @@ export async function deleteContent(id: string) {
       .delete()
       .eq("id", id);
     if (error) throw error;
-  } else db().prepare("DELETE FROM content WHERE id=?").run(id);
+  } else {
+    const item = db().prepare("SELECT * FROM content WHERE id=?").get(id) as
+      Content | undefined;
+    const key = (
+      {
+        type: "type",
+        city: "city",
+        neighborhood: "neighborhood",
+        condominium: "condominium",
+        feature: "features",
+      } as Record<string, string>
+    )[item?.kind || ""];
+    if (item && key)
+      for (const row of db()
+        .prepare("SELECT payload FROM properties")
+        .all() as { payload: string }[]) {
+        const p = JSON.parse(row.payload);
+        if (
+          key === "features"
+            ? p.features.includes(item.title)
+            : p[key] === item.title
+        )
+          throw new Error("CONTENT_IN_USE");
+      }
+    db().prepare("DELETE FROM content WHERE id=?").run(id);
+  }
 }
 export async function updateLead(id: string, status: string) {
-  if (cloud()) {
-    const { error } = await (
-      await supabase()
-    )
-      .from("leads")
-      .update({ status })
-      .eq("id", id);
-    if (error) throw error;
-  } else db().prepare("UPDATE leads SET status=? WHERE id=?").run(status, id);
+  const { leadDetail, saveWorkflow } = await import("./admin-workspace");
+  const { lead } = await leadDetail(id);
+  if (!lead) throw new Error("NOT_FOUND");
+  await saveWorkflow({
+    ...lead,
+    id,
+    status,
+    expected_updated_at: lead.updated_at,
+    note: "",
+    contacted: false,
+  });
+}
+
+export function mapProperty(p: any, admin = false): Property {
+  return {
+    ...p,
+    address:
+      admin || p.map_mode === "exact"
+        ? (Array.isArray(p.property_addresses)
+            ? p.property_addresses[0]?.address
+            : p.property_addresses?.address) || ""
+        : "",
+    type: p.property_types?.name || "",
+    city: p.cities?.name || "",
+    neighborhood: p.neighborhoods?.name || "",
+    condominium: p.condominiums?.name || "",
+    images: p.property_images
+      .sort((a: any, b: any) => a.sort_order - b.sort_order)
+      .map((i: any) => i.url),
+    captions: p.property_images.map((i: any) => i.caption),
+    features: p.property_features.map((f: any) => f.features.name),
+  };
 }

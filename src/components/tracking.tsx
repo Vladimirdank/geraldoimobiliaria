@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import type { Settings } from "@/types";
@@ -12,6 +12,7 @@ declare global {
 }
 export function Tracking({ settings: s }: { settings: Settings }) {
   const path = usePathname();
+  const loadedConfig = useRef("");
   const [consent, setConsent] = useState<string | null>("pending");
   useEffect(() => {
     let utms: Record<string, string> = {};
@@ -41,7 +42,10 @@ export function Tracking({ settings: s }: { settings: Settings }) {
     return () => window.removeEventListener("geraldo-track", onEvent);
   }, [path, consent]);
   useEffect(() => {
-    if (consent !== "accepted") return;
+    if (consent !== "accepted" || path.startsWith("/admin")) return;
+    const config = [s.gtm, s.ga4, s.meta_pixel].join("|");
+    if (loadedConfig.current === config) return;
+    loadedConfig.current = config;
     const add = (id: string, src: string) => {
       if (document.getElementById(id)) return;
       const t = document.createElement("script");
@@ -77,7 +81,7 @@ export function Tracking({ settings: s }: { settings: Settings }) {
       fb("track", "PageView");
       add("meta-pixel", "https://connect.facebook.net/en_US/fbevents.js");
     }
-  }, [consent, s.gtm, s.ga4, s.meta_pixel]);
+  }, [consent, s.gtm, s.ga4, s.meta_pixel, path]);
   if (
     path.startsWith("/admin") ||
     consent !== null ||

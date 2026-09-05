@@ -1,25 +1,18 @@
 import { isAdmin } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { properties, settings, content, leads } from "@/services/repository";
+import { getWorkspace } from "@/services/admin-workspace";
 import { AdminDashboard } from "@/components/admin/dashboard";
 export const metadata = {
   title: "Administração",
   robots: { index: false, follow: false },
 };
-export default async function Admin() {
+export default async function Admin({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string>>;
+}) {
   if (!(await isAdmin())) redirect("/admin/login");
-  const [p, s, c, l] = await Promise.all([
-    properties(true),
-    settings(),
-    content(),
-    leads(),
-  ]);
-  return (
-    <AdminDashboard
-      initialProperties={p}
-      initialSettings={s}
-      initialContent={c}
-      initialLeads={l}
-    />
-  );
+  const query = await searchParams;
+  const data = await getWorkspace(query);
+  return <AdminDashboard data={data} query={query} />;
 }

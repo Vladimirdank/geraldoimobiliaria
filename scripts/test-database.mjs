@@ -36,7 +36,15 @@ try {
     grant select,insert,update,delete on storage.objects to anon,authenticated;
   `);
   await db.exec(readFileSync("database/schema.sql", "utf8"));
-  pass("Estrutura SQL executada integralmente no PostgreSQL local");
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/20260905013702_admin_workspace.sql",
+      "utf8",
+    ),
+  );
+  pass(
+    "Estrutura SQL e migração do painel executadas integralmente no PostgreSQL local",
+  );
   const tables = await db.query(
     "select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='geraldo' and relkind='r' and not relrowsecurity",
   );
@@ -217,6 +225,95 @@ try {
     null,
   );
   pass("Exclusão remove relações sem apagar o histórico do lead");
+  const lead = (
+    await db.query("select * from geraldo.leads where id=$1", [leadId])
+  ).rows[0];
+  const workflow = {
+    id: leadId,
+    expected_updated_at: lead.updated_at,
+    status: "Em atendimento",
+    assignee: "Equipe teste",
+    priority: "Alta",
+    next_action: "Retornar contato",
+    next_action_at: new Date(Date.now() + 86400000).toISOString(),
+    lost_reason: "",
+    note: "Primeiro atendimento realizado",
+    contacted: true,
+  };
+  await db.query("select geraldo.save_lead_workflow($1::jsonb)", [
+    JSON.stringify(workflow),
+  ]);
+  const updated = (
+    await db.query("select * from geraldo.leads where id=$1", [leadId])
+  ).rows[0];
+  assert.equal(updated.assignee, "Equipe teste");
+  assert(updated.first_contact_at);
+  assert.equal(
+    (
+      await db.query("select * from geraldo.lead_activities where lead_id=$1", [
+        leadId,
+      ])
+    ).rows.length,
+    2,
+  );
+  pass(
+    "Atendimento salva responsável, agenda, primeiro contato e histórico na mesma transação",
+  );
+  await assert.rejects(() =>
+    db.query("select geraldo.save_lead_workflow($1::jsonb)", [
+      JSON.stringify(workflow),
+    ]),
+  );
+  pass("Edição concorrente com versão antiga é recusada");
+  await as("authenticated", viewer);
+  assert.equal(
+    (await db.query("select * from geraldo.lead_activities")).rows.length,
+    0,
+  );
+  await assert.rejects(() => db.query("select geraldo.admin_overview()"));
+  await assert.rejects(() =>
+    db.query("select geraldo.save_lead_workflow($1::jsonb)", [
+      JSON.stringify({ ...workflow, expected_updated_at: updated.updated_at }),
+    ]),
+  );
+  pass(
+    "Usuário sem permissão não consulta métricas, histórico ou altera o atendimento",
+  );
+  await as("authenticated", admin);
+  const overview = (await db.query("select geraldo.admin_overview() data"))
+    .rows[0].data;
+  assert.equal(overview.leads, 1);
+  assert.equal(overview.stages["Em atendimento"], 1);
+  pass("Métricas agregadas refletem os registros reais");
+  await db.query(
+    "insert into geraldo.content(id,kind,title) values(gen_random_uuid(),'city','Cidade teste')",
+  );
+  const cityId = (
+    await db.query("select id from geraldo.cities where name='Cidade teste'")
+  ).rows[0].id;
+  await db.query(
+    "update geraldo.content set title='Cidade renomeada' where title='Cidade teste'",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select id from geraldo.cities where name='Cidade renomeada'",
+      )
+    ).rows[0].id,
+    cityId,
+  );
+  pass("Renomear cadastro auxiliar preserva o ID canônico");
+  await as("anon");
+  for (let i = 0; i < 4; i++)
+    await db.query(
+      "insert into geraldo.leads(name,phone,origin) values('Limite teste','84912345678','contato')",
+    );
+  await assert.rejects(() =>
+    db.query(
+      "insert into geraldo.leads(name,phone,origin) values('Limite teste','84912345678','contato')",
+    ),
+  );
+  pass("Limite persistente também protege inserção direta na Data API");
   mkdirSync("database", { recursive: true });
   writeFileSync(
     "database/TEST-RESULTS.md",

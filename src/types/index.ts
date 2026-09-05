@@ -44,6 +44,8 @@ export type Property = {
   updated_at: string;
 };
 export type Lead = {
+  consent_at?: string;
+  consent_version?: string;
   id: string;
   name: string;
   phone: string;

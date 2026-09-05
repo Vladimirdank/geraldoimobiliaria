@@ -1,9 +1,15 @@
-# Verificação da entrega local
+# Validação da evolução do painel — 05/09/2026
 
-- Compilação de produção Next.js e verificação TypeScript aprovadas.
-- Onze verificações de integração local aprovadas em `scripts/smoke.mjs`: bloqueio de escrita anônima, login, rascunho oculto, publicação, privacidade do endereço, edição, lead/UTMs, status do lead, desativação, origem, sitemap e limpeza/exclusão (alguns itens agrupados).
-- Navegador: fotografias carregadas; home e ficha inspecionadas em desktop e celular; busca de apartamento para compra retornou um resultado; favorito salvo e recuperado na página de favoritos.
-- Ficha do imóvel sem transbordamento horizontal observado em 375, 390, 430, 768, 1024, 1440 e 1920 px. Home inspecionada em desktop e mobile; overrides de tela removidos ao final.
-- Nenhum WhatsApp visível sem número cadastrado. Portfólio explicitamente demonstrativo.
-- Supabase remoto não aplicado e não validado: o projeto informado não aparece na conexão atual. Arquivos SQL e adaptador são preparação para integração, não evidência de uma implantação funcional na nuvem.
-- Não há deploy público. A prévia depende do processo local `npm run dev`.
+- Build Next.js e TypeScript aprovados.
+- 21 verificações PostgreSQL isoladas: transações, RLS, privacidade de endereço, histórico de atendimento, proteção contra edição concorrente, métricas agregadas, sincronização de nomes e limite persistente de leads.
+- 11 verificações de integração SQLite aprovadas antes da troca do workspace para Supabase.
+- Integração real Supabase via aplicação local aprovada: acesso anônimo recusado; login administrativo; paginação de 13 imóveis em duas páginas sem repetição; publicação sem fotos bloqueada; formulário grava lead e consentimento; responsável, primeiro contato, histórico e agenda persistidos; edição desatualizada retorna 409; upload convertido para WebP e acessível no Storage; seis seções do painel respondem 200.
+- Dados temporários de validação e imagem de teste removidos ao final.
+- Supabase: migrações initial_portal e admin_workspace aplicadas ao projeto habiqagnbbwpefwjmyyp; schema geraldo exposto à Data API; geraldo_private não exposto.
+- Administrador criado pelo formulário oficial Supabase sem envio de convite; papel admin atribuído no banco. Credencial guardada apenas em data/ACESSO-PRODUCAO.txt.
+- Site URL e redirecionamentos da autenticação configurados. Recuperação por e-mail não foi disparada nem homologada.
+- Advisor de segurança consultado: informação de RLS sem política na tabela privada de contadores é intencional (nega acesso direto). Nenhum erro reportado nessa consulta.
+
+Validação de publicação e inspeção visual finais são acrescentadas ao concluir o deploy. Testes de restauração, carga e integrações externas não foram executados e permanecem no roadmap.
+
+Inspeção visual: visão geral e catálogo conferidos em desktop; catálogo conferido em viewport 390x844 sem transbordamento da página, com tabela em área própria de rolagem. Build final aprovado.

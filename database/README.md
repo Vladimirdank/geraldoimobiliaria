@@ -1,21 +1,17 @@
 # Integração Supabase
 
-O projeto solicitado, **Cecilia Menezes - Site**, não apareceu na conexão disponível. Nenhum banco remoto foi alterado. A aplicação local usa SQLite, com autenticação de desenvolvimento no servidor e dados persistentes.
+As migrações em `supabase/migrations` foram aplicadas ao projeto **Imobiliaria-geraldo** (`habiqagnbbwpefwjmyyp`) em 05/09/2026. `schema.sql` preserva o bootstrap; a migração admin_workspace acrescenta o fluxo de atendimento.
 
-O arquivo `schema.sql` é uma definição de bootstrap ainda não aplicada. Usa o schema dedicado `geraldo` para evitar colisões com tabelas de outros sites. Quando o projeto correto estiver acessível:
+A aplicação utiliza Supabase quando as variáveis públicas estão configuradas. SQLite permanece disponível para desenvolvimento sem essas variáveis. O schema `geraldo` está exposto à Data API; `geraldo_private` permanece privado. RLS protege os dados administrativos. O administrador é vinculado ao Supabase Auth por `profiles`.
 
-1. Inspecionar o banco existente e aplicar a definição como migração pelo fluxo Supabase.
-2. Expor somente `geraldo` nas configurações da Data API; manter `geraldo_private` fora da lista.
-3. Configurar `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` em `.env.local` e no ambiente de hospedagem.
-4. Criar o administrador pelo Supabase Auth e inserir seu UUID em `geraldo.profiles` com role `admin` por uma operação administrativa. Nenhum cadastro público promove usuários.
-5. Configurar URL do site e URLs de redirecionamento `/auth/confirm` e `/admin/reset`. No template Recovery usar `/auth/confirm?token_hash={{ .TokenHash }}&type=recovery` no domínio correto.
-6. Cadastrar os dados comerciais e imóveis reais. O seed local é exclusivo de desenvolvimento.
-7. Testar RLS com visitante, usuário sem perfil de administrador e administrador; revisar os advisors antes de publicar.
+O catálogo inicial contém seis imóveis identificados como demonstração. Substitua por dados comerciais reais. As fotos usam o bucket público `property-images`. Endereços ficam separados e só são públicos quando configurados como exact.
 
-As fotos são armazenadas no bucket público `property-images`. É necessário publicar somente fotografias autorizadas. Endereços ficam em tabela separada e só são retornados publicamente quando a configuração do imóvel é `exact`.
+Os leads públicos permitem inserção limitada. Um gatilho persistente limita submissões por telefone; leitura, histórico e atualização exigem administrador. CAPTCHA e proteção distribuída adicional permanecem no roadmap.
 
-O cadastro de leads público permite somente INSERT com campos limitados; leitura e atualização são administrativas. Para produção, adicionar proteção antiabuso persistente/CAPTCHA no ponto de entrada; o limitador HTTP local é por processo e não substitui um limitador distribuído.
+## Validação
 
-## Validação local
+`npm run test:database` executa 21 verificações PostgreSQL isoladas. A integração também foi validada com o Supabase real: autenticação, paginação, publicação, leads, histórico, concorrência, agenda e upload, removendo os registros temporários. Consulte `../VALIDATION.md`.
 
-A estrutura foi executada integralmente em PostgreSQL embarcado e passou em 15 verificações de relacionamentos, transações e RLS. Execute `npm run test:database` para reproduzir. Consulte `MODEL.md` para o modelo e `TEST-RESULTS.md` para o resultado. Isso não substitui os testes de integração no projeto Supabase de destino.
+## Operação pendente
+
+Configurar SMTP e homologar recuperação por e-mail. O template Recovery deve encaminhar para `/auth/confirm?token_hash={{ .TokenHash }}&type=recovery` no domínio publicado. A troca de senha autenticada está disponível no painel. Backups e restauração ainda precisam ser homologados.

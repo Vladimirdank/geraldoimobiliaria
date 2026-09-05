@@ -11,10 +11,18 @@ import {
 import { propertySchema } from "@/lib/validation";
 import { cloud, supabase } from "@/lib/supabase";
 import { z } from "zod";
+import { publicationIssues } from "@/lib/admin-model";
+import { saveWorkflow } from "@/services/admin-workspace";
 export async function POST(req: Request) {
   try {
     await sameOrigin();
-    const body = await req.json();
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).length > 200000)
+      return NextResponse.json(
+        { error: "Dados muito grandes." },
+        { status: 413 },
+      );
+    const body = JSON.parse(raw);
     if (body.action === "login") {
       const email = z.email().max(150).parse(body.email);
       const password = z.string().min(1).max(200).parse(body.password);
@@ -62,7 +70,12 @@ export async function POST(req: Request) {
       if (error) throw error;
     } else if (body.action === "property") {
       const p = propertySchema.parse(body.property);
+      const issues = p.active ? publicationIssues(p) : [];
+      if (issues.length)
+        return NextResponse.json({ error: issues.join(" ") }, { status: 422 });
       await saveProperty({ ...p, updated_at: new Date().toISOString() });
+    } else if (body.action === "lead-workflow") {
+      await saveWorkflow(body.workflow);
     } else if (body.action === "delete-property") {
       await removeProperty(z.uuid().parse(body.id));
     } else if (body.action === "settings") {
@@ -125,6 +138,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     const message = (e as Error).message;
+    if (message === "CONTENT_IN_USE" || message.includes("foreign key"))
+      return NextResponse.json(
+        {
+          error:
+            "Este item está vinculado a imóveis. Edite os vínculos antes de excluir.",
+        },
+        { status: 409 },
+      );
+    if (message === "CONFLICT")
+      return NextResponse.json(
+        {
+          error:
+            "Este atendimento foi alterado em outra janela. Reabra o contato para atualizar os dados.",
+        },
+        { status: 409 },
+      );
+    if (e instanceof z.ZodError)
+      return NextResponse.json(
+        { error: e.issues.map((x) => x.message).join(" ") },
+        { status: 422 },
+      );
     return NextResponse.json(
       {
         error:

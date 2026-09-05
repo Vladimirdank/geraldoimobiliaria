@@ -55,6 +55,8 @@ export async function POST(req: Request) {
       status: "Novo",
       utms: p.utms,
       created_at: new Date().toISOString(),
+      consent_at: new Date().toISOString(),
+      consent_version: "contact-2026-09-v1",
     });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {

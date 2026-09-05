@@ -13,3 +13,4 @@ README.md
 *.tsbuildinfo
 output/**
 tmp/**
+supabase/**
