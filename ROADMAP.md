@@ -1,6 +1,6 @@
 # Roadmap do portal Geraldo Imobiliária
 
-Análise em 04/09/2026. Base: código atual, esquema SQL, documentação local e resultado do deploy observado nesta conversa. Este documento é planejamento; não afirma que as melhorias foram implementadas.
+Análise em 04/09/2026. Base: código atual, esquema SQL, documentação local e resultado do deploy observado nesta conversa. O diagnóstico inicial é histórico; as seções de evolução ao final registram as entregas já implementadas e verificadas.
 
 ## Direção do produto
 
@@ -196,3 +196,15 @@ Recomendação de execução: começar pelas fases 0 e 1, validar a operação c
 - [ ] Auditoria ampla de eventos/consentimento, SEO e Core Web Vitals em campo.
 
 As fases originais abaixo/acima são o plano completo; esta atualização registra o escopo entregue, sem marcar todo o roadmap como concluído. Consulte ARCHITECTURE.md e VALIDATION.md para o comportamento atual.
+
+## Evolução executada em 06/09/2026 — catálogo público
+
+- [x] Filtros, contagem, ordenação e páginas de seis imóveis executados no banco, sem teto de 100 resultados.
+- [x] Busca sem acentos, filtros removíveis individualmente e navegação que preserva a pesquisa.
+- [x] Ficha consultada diretamente por slug; sugestões limitadas à mesma cidade e finalidade.
+- [x] Preços sob consulta ficam no fim da ordenação e fora das faixas numéricas.
+- [x] Projeção de busca com security_invoker, preservando RLS; 24 verificações SQL isoladas aprovadas.
+
+Esta entrega não resolve a confidencialidade do preço na tabela original. Home, favoritos e sitemap ainda usam a consulta anterior; hierarquia geográfica, sigilo de preço na API, SMTP e recuperação continuam pendentes.
+
+- [ ] Habilitar proteção contra senhas vazadas no Supabase Auth (aviso do advisor em 06/09/2026).

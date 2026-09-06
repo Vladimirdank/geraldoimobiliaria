@@ -314,10 +314,64 @@ try {
     ),
   );
   pass("Limite persistente também protege inserção direta na Data API");
+  await as("postgres");
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/20260906224037_public_catalog.sql",
+      "utf8",
+    ),
+  );
+  await as("authenticated", admin);
+  for (let i = 0; i < 19; i++) {
+    await db.query("select geraldo.save_property($1::jsonb)", [
+      JSON.stringify({
+        ...p,
+        id: crypto.randomUUID(),
+        slug: `catalog-${i}`,
+        code: `CAT-${i}`,
+        title: `Mansão São José ${i}`,
+        status: "Disponível",
+        active: i < 18,
+        show_price: i !== 0,
+        price: 100 + i,
+      }),
+    ]);
+  }
+  await as("anon");
+  const catalog = await db.query(
+    "select * from geraldo.catalog_search where search_text like '%mansao sao jose%' order by visible_price asc nulls last,created_at desc,id",
+  );
+  assert.equal(catalog.rows.length, 18);
+  assert.equal(catalog.rows.at(-1).visible_price, null);
+  assert.equal(catalog.rows[0].visible_price, "101");
+  pass(
+    "Busca sem acentos exclui rascunhos e coloca preços sob consulta por último",
+  );
+  const seen = new Set();
+  for (let offset = 0; offset < 18; offset += 6) {
+    const page = await db.query(
+      "select id from geraldo.catalog_search where search_text like '%mansao sao jose%' order by created_at desc,id limit 6 offset $1",
+      [offset],
+    );
+    assert.equal(page.rows.length, 6);
+    for (const row of page.rows) {
+      assert(!seen.has(row.id));
+      seen.add(row.id);
+    }
+  }
+  assert.equal(seen.size, 18);
+  pass("Três páginas públicas não repetem nem omitem imóveis com datas iguais");
+  const filtered = await db.query(
+    "select id from geraldo.catalog_search where search_text like '%mansao sao jose%' and visible_price >= 110 and visible_price <= 115 and city='Natal' and bedrooms >= 3",
+  );
+  assert.equal(filtered.rows.length, 6);
+  pass(
+    "Filtros públicos combinados preservam a faixa de preço e a localização",
+  );
   mkdirSync("database", { recursive: true });
   writeFileSync(
     "database/TEST-RESULTS.md",
-    `# Validação SQL local\n\nExecutado em ${new Date().toISOString()}.\n\n${results.map((x) => "- Aprovado: " + x).join("\n")}\n\n${results.length} verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Nenhum banco remoto foi alterado; integração HTTP/PostgREST, autenticação real e upload remoto ainda precisam ser verificados no projeto Supabase correto.\n`,
+    `# Validação SQL local\n\nExecutado em ${new Date().toISOString()}.\n\n${results.map((x) => "- Aprovado: " + x).join("\n")}\n\n${results.length} verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Esta execução isolada não altera bancos remotos. Evidências de integração real estão em VALIDATION.md e data/VALIDACAO-PRODUCAO.txt.\n`,
   );
   console.log(`${results.length} verificações aprovadas.`);
 } catch (error) {

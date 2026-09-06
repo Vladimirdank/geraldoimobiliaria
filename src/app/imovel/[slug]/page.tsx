@@ -1,3 +1,4 @@
+import { publicProperty, publicCatalog } from "@/services/public-catalog";
 import { FormattedDescription } from "@/components/formatted-description";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,7 +11,7 @@ import {
   ArrowUpRight,
   Check,
 } from "lucide-react";
-import { properties, settings } from "@/services/repository";
+import { settings } from "@/services/repository";
 import { Gallery, ShareButton } from "@/components/gallery";
 import { FavoriteButton, PropertyCard } from "@/components/property-card";
 import { LeadForm } from "@/components/lead-form";
@@ -22,7 +23,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const p = (await properties()).find((p) => p.slug === slug);
+  const p = await publicProperty(slug);
   if (!p) return { title: "Imóvel não encontrado" };
   return {
     title: p.seo_title || p.title,
@@ -45,20 +46,12 @@ export default async function PropertyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [all, s] = await Promise.all([properties(), settings()]);
-  const p = all.find((p) => p.slug === slug);
+  const [p, s] = await Promise.all([publicProperty(slug), settings()]);
   if (!p) notFound();
-  const related = all
+  const related = (
+    await publicCatalog({ city: p.city, purpose: p.purpose })
+  ).items
     .filter((x) => x.id !== p.id)
-    .sort(
-      (a, b) =>
-        (b.city === p.city ? 2 : 0) +
-        (b.type === p.type ? 2 : 0) +
-        (Math.abs(b.price - p.price) < p.price * 0.3 ? 1 : 0) -
-        ((a.city === p.city ? 2 : 0) +
-          (a.type === p.type ? 2 : 0) +
-          (Math.abs(a.price - p.price) < p.price * 0.3 ? 1 : 0)),
-    )
     .slice(0, 3);
   const message = `Olá! Vi o imóvel ${p.title} – código ${p.code} no site e gostaria de receber mais informações.`;
   return (

@@ -1,5 +1,6 @@
+import { publicCatalog, catalogQuery } from "@/services/public-catalog";
 import Link from "next/link";
-import { properties, content } from "@/services/repository";
+import { content } from "@/services/repository";
 import { PropertyCard } from "@/components/property-card";
 import { Search, SlidersHorizontal, ArrowUpRight } from "lucide-react";
 export const metadata = { title: "Encontre seu próximo imóvel" };
@@ -8,37 +9,11 @@ export default async function Catalog({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
-  const q = await searchParams;
-  const [all, c] = await Promise.all([properties(), content()]);
-  let results = all.filter(
-    (p) =>
-      (!q.purpose || p.purpose === q.purpose) &&
-      (!q.type || p.type === q.type) &&
-      (!q.city || p.city === q.city) &&
-      (!q.neighborhood || p.neighborhood === q.neighborhood) &&
-      (!q.condominium || p.condominium === q.condominium) &&
-      (!q.tag || p.tag === q.tag) &&
-      (!q.min || (p.show_price && p.price >= Number(q.min))) &&
-      (!q.max || (p.show_price && p.price <= Number(q.max))) &&
-      (!q.bedrooms || p.bedrooms >= Number(q.bedrooms)) &&
-      (!q.suites || p.suites >= Number(q.suites)) &&
-      (!q.parking || p.parking >= Number(q.parking)) &&
-      (!q.area || p.area >= Number(q.area)) &&
-      (!q.q ||
-        `${p.title} ${p.code} ${p.city} ${p.neighborhood}`
-          .toLowerCase()
-          .includes(q.q.toLowerCase())),
-  );
-  results.sort((a, b) =>
-    q.sort === "price-asc"
-      ? a.price - b.price
-      : q.sort === "price-desc"
-        ? b.price - a.price
-        : q.sort === "area"
-          ? b.area - a.area
-          : b.created_at.localeCompare(a.created_at),
-  );
-  const count = Math.max(6, Math.min(100, Number(q.limit) || 6));
+  const q = catalogQuery(await searchParams);
+  const [result, c] = await Promise.all([publicCatalog(q), content()]);
+  const { items: results, total, page, size } = result;
+  const pageUrl = (target: number) =>
+    `/imoveis?${new URLSearchParams({ ...q, page: String(target) })}`;
   return (
     <main id="main" className="inner-page container">
       <span className="eyebrow">UM LUGAR COM A SUA ESSÊNCIA</span>
@@ -154,7 +129,7 @@ export default async function Catalog({
         </details>
         <div className="catalog-toolbar">
           <span>
-            <strong>{results.length}</strong> imóveis encontrados
+            <strong>{total}</strong> imóveis encontrados
           </span>
           <div>
             <Link href="/imoveis">Limpar filtros</Link>
@@ -173,30 +148,97 @@ export default async function Catalog({
           </div>
         </div>
       </form>
+      {Object.entries(q).some(
+        ([key, value]) => value && !["page", "sort"].includes(key),
+      ) && (
+        <nav
+          aria-label="Filtros aplicados"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: ".75rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          {Object.entries(q)
+            .filter(([key, value]) => value && !["page", "sort"].includes(key))
+            .map(([key, value]) => {
+              const next: Record<string, string> = { ...q, page: "1" };
+              delete next[key];
+              const labels: Record<string, string> = {
+                q: "Busca",
+                purpose: "Finalidade",
+                type: "Tipo",
+                city: "Cidade",
+                neighborhood: "Bairro",
+                condominium: "Condomínio",
+                tag: "Seleção",
+                min: "Preço mínimo",
+                max: "Preço máximo",
+                bedrooms: "Quartos mín.",
+                suites: "Suítes mín.",
+                parking: "Vagas mín.",
+                area: "Área mín.",
+              };
+              return (
+                <Link
+                  key={key}
+                  className="text-button"
+                  href={`/imoveis?${new URLSearchParams(next)}`}
+                  aria-label={`Remover filtro ${labels[key]}: ${value}`}
+                >
+                  {labels[key]}: {value} ×
+                </Link>
+              );
+            })}
+        </nav>
+      )}
       {results.length ? (
         <>
           <div className="property-grid">
-            {results.slice(0, count).map((p) => (
+            {results.map((p) => (
               <PropertyCard key={p.id} property={p} />
             ))}
           </div>
-          {results.length > count && (
-            <div className="load-more">
-              <Link
-                className="button"
-                href={`/imoveis?${new URLSearchParams({ ...q, limit: String(count + 6) }).toString()}`}
-              >
-                Carregar mais imóveis
-              </Link>
-            </div>
+          {total > size && (
+            <nav
+              className="load-more"
+              aria-label="Páginas de imóveis"
+              style={{
+                display: "flex",
+                gap: "1rem",
+                alignItems: "center",
+                justifyContent: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              {page > 1 && (
+                <Link className="button" href={pageUrl(page - 1)} rel="prev">
+                  Anterior
+                </Link>
+              )}
+              <span>
+                Página {page} de {Math.ceil(total / size)}
+              </span>
+              {page * size < total && (
+                <Link className="button" href={pageUrl(page + 1)} rel="next">
+                  Próxima página
+                </Link>
+              )}
+            </nav>
           )}
         </>
       ) : (
         <div className="empty">
           <Search size={34} />
           <h2>Ainda não encontramos esse lugar.</h2>
+          {page > 1 && (
+            <Link className="button" href={pageUrl(1)}>
+              Voltar à primeira página
+            </Link>
+          )}
           <p>
-            Nenhum imóvel encontrado com esses filtros. Experimente ampliar a
+            Nenhum imóvel nesta página. Volte à primeira página ou amplie a
             busca.
           </p>
           <Link href="/imoveis" className="button">

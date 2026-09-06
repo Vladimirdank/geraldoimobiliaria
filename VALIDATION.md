@@ -13,3 +13,5 @@
 Validação de publicação e inspeção visual finais são acrescentadas ao concluir o deploy. Testes de restauração, carga e integrações externas não foram executados e permanecem no roadmap.
 
 Inspeção visual: visão geral e catálogo conferidos em desktop; catálogo conferido em viewport 390x844 sem transbordamento da página, com tabela em área própria de rolagem. Build final aprovado.
+
+06/09/2026: 24 verificações SQL aprovadas, incluindo acentos, ocultação de rascunhos, ordenação com preço sob consulta, três páginas sem repetição e filtros combinados. Migração public_catalog aplicada ao Supabase.

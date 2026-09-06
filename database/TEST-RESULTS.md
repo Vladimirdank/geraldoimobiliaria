@@ -1,6 +1,6 @@
 # Validação SQL local
 
-Executado em 2026-09-05T01:51:39.733Z.
+Executado em 2026-09-06T22:41:50.103Z.
 
 - Aprovado: Estrutura SQL e migração do painel executadas integralmente no PostgreSQL local
 - Aprovado: RLS ativo em todas as tabelas da aplicação
@@ -23,5 +23,8 @@ Executado em 2026-09-05T01:51:39.733Z.
 - Aprovado: Métricas agregadas refletem os registros reais
 - Aprovado: Renomear cadastro auxiliar preserva o ID canônico
 - Aprovado: Limite persistente também protege inserção direta na Data API
+- Aprovado: Busca sem acentos exclui rascunhos e coloca preços sob consulta por último
+- Aprovado: Três páginas públicas não repetem nem omitem imóveis com datas iguais
+- Aprovado: Filtros públicos combinados preservam a faixa de preço e a localização
 
-21 verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Nenhum banco remoto foi alterado; integração HTTP/PostgREST, autenticação real e upload remoto ainda precisam ser verificados no projeto Supabase correto.
+24 verificações aprovadas em PostgreSQL embarcado (PGlite). Auth e Storage foram simulados apenas no nível SQL. Esta execução isolada não altera bancos remotos. Evidências de integração real estão em VALIDATION.md e data/VALIDACAO-PRODUCAO.txt.
